@@ -15,6 +15,32 @@ A highly resilient, AI-powered Slack bot designed for Hackathons and rapid incid
 *   **💬 Conversational AI & Transcript RAG**: Mention `@MCP-Bot` in Slack to chat with it. It reads the recent channel transcript to understand context. It even features a secret backdoor to generate custom messages (like To-Do lists) and automatically DM them to your engineers!
 *   **📣 Automated Paging**: If a `CRITICAL` or `HIGH` severity alert fires, the bot automatically broadcasts to `#announcements` and physically DMs your on-call engineers so they never miss an outage.
 
+## 🏗️ Architecture
+
+```mermaid
+graph TD
+    A[Frontend React/Vite] -->|Throws Error| B(Datadog RUM)
+    C[Backend Express] -->|Logs Error| D(Datadog Agent)
+    
+    B -.-> E[Datadog API]
+    D -.-> E
+    
+    F[Slack Incident Agent] -->|Polls every 30s| E
+    F -->|WebSocket Synthetics| A
+    F -->|WebSocket Synthetics| C
+    
+    E -->|Raw Logs| F
+    F <-->|Stack Trace Analysis| G{Groq AI Failover System}
+    
+    F <-->|Query internal data via MCP| L[(Snowflake Data Warehouse)]
+    
+    F -->|Posts Alert + Block Kit| H[Slack Workspace]
+    
+    H -->|Click: Rollback| I(GitHub Actions API)
+    H -->|Click: Export Doc| J(Google Docs API)
+    H -->|Click: Jira Ticket| K(Jira API)
+```
+
 ## 🚀 Quick Start Guide
 
 ### 1. The Slack Bot (The Brain 🧠)
