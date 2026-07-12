@@ -1,0 +1,26 @@
+name: Rollback Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for rollback'
+        required: true
+        default: 'Incident Agent Auto-Rollback'
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Simulate Rollback Execution
+        run: |
+          echo "🚨 Received request to rollback deployment!"
+          echo "Reason: ${{ github.event.inputs.reason }}"
+          echo "Stopping current containers..."
+          sleep 2
+          echo "Reverting traffic to previous stable version..."
+          sleep 2
+          echo "✅ Rollback completed successfully! System is stable."

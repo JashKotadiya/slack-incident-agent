@@ -1,0 +1,116 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+  color: #ffffff;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.container {
+  padding: 20px;
+  width: 100%;
+  max-width: 600px;
+}
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 50px 40px;
+  border-radius: 20px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  text-align: center;
+}
+
+h1 {
+  margin-top: 0;
+  font-size: 2.5rem;
+  font-weight: 800;
+  background: linear-gradient(to right, #00c6ff, #0072ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 10px;
+}
+
+.subtitle {
+  color: #a0aec0;
+  font-size: 1.1rem;
+  line-height: 1.6;
+  margin-bottom: 40px;
+}
+
+.crash-btn {
+  background: linear-gradient(135deg, #ff416c, #ff4b2b);
+  color: white;
+  border: none;
+  padding: 16px 40px;
+  font-size: 1.2rem;
+  font-weight: 600;
+  border-radius: 50px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 10px 20px rgba(255, 75, 43, 0.3);
+}
+
+.crash-btn:hover:not(:disabled) {
+  transform: translateY(-3px);
+  box-shadow: 0 15px 25px rgba(255, 75, 43, 0.5);
+}
+
+.crash-btn:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: 0 5px 10px rgba(255, 75, 43, 0.3);
+}
+
+.crash-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.8; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.pulse {
+  animation: pulse 1s infinite;
+}
+
+.status-message {
+  margin-top: 30px;
+  padding: 15px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 1.1rem;
+  opacity: 0;
+  animation: fadeIn 0.5s forwards;
+}
+
+@keyframes fadeIn {
+  to { opacity: 1; }
+}
+
+.status-message.crashing {
+  background: rgba(255, 165, 0, 0.1);
+  color: #ffa500;
+  border: 1px solid rgba(255, 165, 0, 0.2);
+}
+
+.status-message.error {
+  background: rgba(255, 75, 43, 0.1);
+  color: #ff4b2b;
+  border: 1px solid rgba(255, 75, 43, 0.2);
+}
+
+.status-message.success {
+  background: rgba(76, 175, 80, 0.1);
+  color: #4CAF50;
+  border: 1px solid rgba(76, 175, 80, 0.2);
+}

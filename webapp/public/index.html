@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vulnerable Web App</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #1a1a1a;
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: #2d2d2d;
+      padding: 40px;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      text-align: center;
+      max-width: 500px;
+    }
+    h1 {
+      color: #e0e0e0;
+      margin-top: 0;
+    }
+    p {
+      color: #b3b3b3;
+      margin-bottom: 30px;
+    }
+    .crash-btn {
+      background: linear-gradient(135deg, #ff416c, #ff4b2b);
+      color: white;
+      border: none;
+      padding: 15px 30px;
+      font-size: 1.2rem;
+      font-weight: bold;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .crash-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(255, 75, 43, 0.4);
+    }
+    .crash-btn:active {
+      transform: translateY(1px);
+    }
+    #status {
+      margin-top: 20px;
+      font-weight: bold;
+      min-height: 24px;
+    }
+    .error {
+      color: #ff4b2b;
+    }
+    .success {
+      color: #4CAF50;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Hackathon E-Commerce</h1>
+    <p>This is our beautiful, highly resilient e-commerce platform. It definitely won't crash if you click this button.</p>
+    <button class="crash-btn" onclick="crashServer()">Simulate Outage</button>
+    <div id="status"></div>
+  </div>
+
+  <script>
+    async function crashServer() {
+      const statusDiv = document.getElementById('status');
+      statusDiv.innerHTML = '<span style="color: #ffa500">Initiating catastrophic failure...</span>';
+      
+      try {
+        const response = await fetch('/api/crash', { method: 'POST' });
+        const data = await response.json();
+        
+        if (!response.ok) {
+          statusDiv.innerHTML = `<span class="error">❌ ${data.message || 'Server Crashed!'} Log sent to Datadog.</span>`;
+        } else {
+          statusDiv.innerHTML = `<span class="success">✅ Server somehow survived.</span>`;
+        }
+      } catch (error) {
+        statusDiv.innerHTML = `<span class="error">❌ Network Error: The server is completely down.</span>`;
+      }
+    }
+  </script>
+</body>
+</html>
