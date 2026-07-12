@@ -7,6 +7,7 @@ import { createIncidentChannel, inviteUsersToChannel, postDebrief, dmUser } from
 import { getRecentHistory, addIncidentToHistory } from './history-store.js';
 import { formatForSlack } from './slack-formatter.js';
 import { createIncidentIssue, triggerRollbackWorkflow } from './github-actions.js';
+import { startSyntheticMonitoring } from './synthetic-monitor.js';
 
 dotenv.config();
 
@@ -30,35 +31,39 @@ getRecentHistory(50).then(history => {
   incidentCounter = history.length + 1;
 });
 
-async function handleAlert(alertName, say, client, service = 'webapp') {
+async function handleAlert(alertName, say, client, service = 'webapp', diagnosticOverride = null) {
   try {
     const currentErrorId = incidentCounter++;
     await say(`🚨 *Error ${currentErrorId} Received:* ${alertName}. \nGathering diagnostic data and spinning up an incident response...`);
 
-    const diagnosticData = await getDiagnosticData(service);
+    const diagnosticData = diagnosticOverride || await getDiagnosticData(service);
     await say(`🧠 Diagnostic data retrieved from ${diagnosticData.source}. Analyzing with Groq AI...`);
     
     // Only pass the last 1 incident to prevent Groq 8000 TPM limit errors!
     const historyContext = await getRecentHistory(1);
     const aiResponse = await summarizeAlert(diagnosticData, historyContext);
-    const severity = aiResponse.severity;
-    const summary = aiResponse.summary;
+    let autoFixNote = "";
+    if (aiResponse.autoFixAction === 'trigger_rollback') {
+      autoFixNote = `\n\n🤖 *Recommendation:*\nI strongly recommend rolling back to the previous stable deployment. Want me to trigger a rollback? (Click the button below!)`;
+    } else if (aiResponse.autoFixAction === 'create_issue') {
+      autoFixNote = `\n\n🤖 *Recommendation:*\nI recommend creating a GitHub Issue to track this non-critical bug.`;
+    }
 
     let emoji = "🚨";
     let title = "Urgent System Alert";
-    if (severity === "LOW" || severity === "MEDIUM") {
-      emoji = severity === "LOW" ? "ℹ️" : "⚠️";
+    if (aiResponse.severity === "LOW" || aiResponse.severity === "MEDIUM") {
+      emoji = aiResponse.severity === "LOW" ? "ℹ️" : "⚠️";
       title = "System Notice";
-    } else if (severity === "HIGH") {
+    } else if (aiResponse.severity === "HIGH") {
       emoji = "🚨";
-      title = "Important System Alert";
+      title = "Urgent System Alert";
     }
 
-    const finalSummary = `${emoji} *Error ${currentErrorId} - Incident Debrief*\n\n${summary}`;
+    const finalSummary = `${emoji} *Error ${currentErrorId} - Incident Debrief*\n\n${aiResponse.summary + autoFixNote}`;
     
     await addIncidentToHistory(finalSummary);
     
-    const formattedSummary = formatForSlack(summary);
+    const formattedSummary = formatForSlack(aiResponse.summary + autoFixNote);
     const summaryChunks = formattedSummary.match(/[\s\S]{1,2900}/g) || [formattedSummary];
 
     // Construct Block Kit Payload
@@ -151,11 +156,11 @@ async function handleAlert(alertName, say, client, service = 'webapp') {
     await postDebrief(client, 'errors', finalSummary, blocks);
     await say(`✅ Incident response initialized. Please check the #errors channel for the debrief and ongoing discussion.`);
 
-    if (severity === "CRITICAL") {
+    if (aiResponse.severity === "CRITICAL") {
       await postDebrief(client, 'announcements', `<!channel> ${emoji} *A critical system alert has been detected!* Check the #errors channel for more details.`);
     }
 
-    if (severity === "HIGH" || severity === "CRITICAL") {
+    if (aiResponse.severity === "HIGH" || aiResponse.severity === "CRITICAL") {
       if (securityTeamUserIds && securityTeamUserIds.length > 0) {
         for (const userId of securityTeamUserIds) {
           if (userId) await dmUser(client, userId, `${emoji} *${title} (Error ${currentErrorId}): ${alertName}*\n\n${finalSummary}`, blocks);
@@ -340,4 +345,21 @@ async function pollForErrors() {
 
   // Autonomous Error Detection: Poll every 60 seconds
   setInterval(pollForErrors, 60000);
+
+  // Instant Uptime Detection: WebSocket Monitor
+  startSyntheticMonitoring(async (service, errorMessage) => {
+    const mockSay = async (text) => { 
+      await app.client.chat.postMessage({ channel: 'errors', text: text }); 
+    };
+    
+    // We pass fakeData as an override since Datadog can't see dead servers
+    const fakeData = {
+      source: "Synthetic Monitor (WebSocket)",
+      status: "CRITICAL",
+      timestamp: new Date().toISOString(),
+      logs: errorMessage
+    };
+    
+    await handleAlert(`Uptime Check Failed: ${service}`, mockSay, app.client, service, fakeData);
+  });
 })();

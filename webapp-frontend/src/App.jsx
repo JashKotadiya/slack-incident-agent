@@ -25,6 +25,7 @@ function App() {
       setMessage('❌ Network Error: The server is completely down.')
     }
   }
+
   const handleFrontendCrash = () => {
     setStatus('error')
     setMessage('❌ Frontend React Runtime Error! Log sent to Datadog RUM.')

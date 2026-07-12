@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { WebSocketServer } from 'ws';
 
 // We share the same .env file from the parent directory for simplicity
 dotenv.config({ path: '../.env' });
@@ -67,7 +68,14 @@ app.post('/api/crash', async (req, res) => {
 });
 
 const PORT = 8080;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Vulnerable Web App running at http://localhost:${PORT}`);
   console.log(`Ready to send crash logs to Datadog!`);
+});
+
+// Attach a WebSocket server to the same HTTP server for persistent uptime monitoring
+const wss = new WebSocketServer({ server });
+wss.on('connection', (ws) => {
+  console.log('[WebSocket] Incident Agent connected for uptime monitoring.');
+  ws.on('close', () => console.log('[WebSocket] Incident Agent disconnected.'));
 });

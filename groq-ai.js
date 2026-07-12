@@ -70,7 +70,21 @@ Format the response nicely so it can be sent as a Slack message. Use Slack markd
       responseContent = jsonMatch[0];
     }
 
-    const parsed = JSON.parse(responseContent);
+    let parsed = {};
+    try {
+      parsed = JSON.parse(responseContent);
+    } catch (parseError) {
+      console.error("JSON parsing failed, attempting regex salvage:", parseError.message);
+      // Salvage values using regex if the JSON was cut off
+      const severityMatch = responseContent.match(/"severity"\s*:\s*"([^"]+)"/);
+      const actionMatch = responseContent.match(/"autoFixAction"\s*:\s*"([^"]+)"/);
+      const summaryMatch = responseContent.match(/"summary"\s*:\s*"([^"]+)/); // Might be unterminated
+      
+      parsed.severity = severityMatch ? severityMatch[1] : "HIGH";
+      parsed.autoFixAction = actionMatch ? actionMatch[1] : "none";
+      parsed.summary = summaryMatch ? summaryMatch[1] + "..." : "Error generating summary with AI (Output cut off).";
+    }
+
     return {
       severity: parsed.severity || "HIGH",
       summary: parsed.summary || "Could not generate summary.",

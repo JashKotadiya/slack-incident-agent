@@ -50,7 +50,7 @@ export async function getDiagnosticData(serviceName = 'webapp') {
     console.error("Error fetching logs from Datadog:", error);
     return {
       source: 'Datadog',
-      status: 'ERROR',
+      status: error.message.includes('429') || error.code === 429 ? 'RATE_LIMIT' : 'ERROR',
       timestamp: new Date().toISOString(),
       logs: `Failed to fetch logs from Datadog: ${error.message}`
     };

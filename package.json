@@ -13,7 +13,8 @@
     "@octokit/rest": "^22.0.1",
     "@slack/bolt": "^3.19.0",
     "dotenv": "^16.4.5",
-    "groq-sdk": "^0.5.0"
+    "groq-sdk": "^0.5.0",
+    "ws": "^8.21.0"
   },
   "type": "module"
 }
