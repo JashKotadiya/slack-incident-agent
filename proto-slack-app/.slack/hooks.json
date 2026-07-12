@@ -1,0 +1,9 @@
+{
+  "hooks": {
+    "get-hooks": ".venv\\Scripts\\python.exe -m slack_cli_hooks.hooks.get_hooks",
+    "get-manifest": ".venv\\Scripts\\python.exe -m slack_cli_hooks.hooks.get_manifest",
+    "check-update": ".venv\\Scripts\\python.exe -m slack_cli_hooks.hooks.check_update",
+    "doctor": ".venv\\Scripts\\python.exe -m slack_cli_hooks.hooks.doctor",
+    "start": ".venv\\Scripts\\python.exe -X dev -m slack_cli_hooks.hooks.start"
+  }
+}
