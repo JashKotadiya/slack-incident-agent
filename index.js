@@ -8,6 +8,8 @@ import { getRecentHistory, addIncidentToHistory } from './history-store.js';
 import { formatForSlack } from './slack-formatter.js';
 import { createIncidentIssue, triggerRollbackWorkflow } from './github-actions.js';
 import { startSyntheticMonitoring } from './synthetic-monitor.js';
+import { createJiraTicket } from './jira-api.js';
+import { exportToGoogleDoc } from './google-docs-api.js';
 
 dotenv.config();
 
@@ -57,6 +59,9 @@ async function handleAlert(alertName, say, client, service = 'webapp', diagnosti
     } else if (aiResponse.severity === "HIGH") {
       emoji = "🚨";
       title = "Urgent System Alert";
+    } else if (aiResponse.severity === "CRITICAL") {
+      emoji = "🚨";
+      title = "CRITICAL OUTAGE";
     }
 
     const finalSummary = `${emoji} *Error ${currentErrorId} - Incident Debrief*\n\n${aiResponse.summary + autoFixNote}`;
@@ -125,6 +130,15 @@ async function handleAlert(alertName, say, client, service = 'webapp', diagnosti
           type: "button",
           text: {
             type: "plain_text",
+            text: "📖 View Runbook SOP",
+            emoji: true
+          },
+          action_id: "view_company_runbook"
+        },
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
             text: "🎫 Create Jira Ticket",
             emoji: true
           },
@@ -148,22 +162,30 @@ async function handleAlert(alertName, say, client, service = 'webapp', diagnosti
       });
     }
 
+    actionElements.push({
+      type: "button",
+      text: { type: "plain_text", text: "📝 Export to Google Docs", emoji: true },
+      value: "export_summary",
+      action_id: "export_google_doc"
+    });
+
     blocks.push({
       type: "actions",
       elements: actionElements
     });
 
-    await postDebrief(client, 'errors', finalSummary, blocks);
+    await postDebrief(client, '#errors', finalSummary, blocks);
     await say(`✅ Incident response initialized. Please check the #errors channel for the debrief and ongoing discussion.`);
 
-    if (aiResponse.severity === "CRITICAL") {
-      await postDebrief(client, 'announcements', `<!channel> ${emoji} *A critical system alert has been detected!* Check the #errors channel for more details.`);
+    if (aiResponse.severity === "HIGH" || aiResponse.severity === "CRITICAL") {
+      await postDebrief(client, '#announcements', `<!channel> ${emoji} *A ${aiResponse.severity.toLowerCase()} system alert has been detected!* Check the #errors channel for more details.`);
     }
 
     if (aiResponse.severity === "HIGH" || aiResponse.severity === "CRITICAL") {
+      const dmMessage = `${emoji} *A critical system alert has been detected!* Check the #errors channel for more details.`;
       if (securityTeamUserIds && securityTeamUserIds.length > 0) {
         for (const userId of securityTeamUserIds) {
-          if (userId) await dmUser(client, userId, `${emoji} *${title} (Error ${currentErrorId}): ${alertName}*\n\n${finalSummary}`, blocks);
+          if (userId) await dmUser(client, userId, dmMessage);
         }
       }
     }
@@ -222,20 +244,38 @@ async function processMessage(event, say, client, conversationId) {
   const contextualText = `[User ${userName} says]: ${text}`;
 
   const alertRegex = /\b(run system check|simulate outage|check for errors|check for erro)(?:\s+(?:on\s+)?(frontend|backend|webapp-frontend|webapp))?\b/i;
+  const dmRegex = /(?:dm|send a dm to|message)\s+<@([A-Z0-9]+)>\s*(.*)/i;
   
-  const match = text.match(alertRegex);
-  if (match) {
+  const alertMatch = text.match(alertRegex);
+  const dmMatch = text.match(dmRegex);
+
+  if (alertMatch) {
     let service = 'webapp'; // default
-    if (match[2]) {
-      const target = match[2].toLowerCase();
+    if (alertMatch[2]) {
+      const target = alertMatch[2].toLowerCase();
       if (target === 'frontend' || target === 'webapp-frontend') service = 'webapp-frontend';
       else if (target === 'backend' || target === 'webapp') service = 'webapp';
     }
     await handleAlert(`System Check (${service})`, say, client, service);
+  } else if (dmMatch) {
+    const targetUserId = dmMatch[1];
+    const messageToForward = dmMatch[2] || "You have a new message from the incident agent.";
+    await dmUser(client, targetUserId, `💬 *Message from <@${event.user}>:*\n\n${messageToForward}`);
+    await say(`✅ I've forwarded your direct message to <@${targetUserId}>!`);
   } else {
     // Conversational AI with Slack RAG
     const transcript = await fetchSlackHistory(event, client);
-    const response = await chatWithAI(contextualText, conversationId, transcript);
+    let response = await chatWithAI(contextualText, conversationId, transcript);
+    
+    // Check if the AI wants to trigger a DM
+    const aiDmMatch = response.match(/^\[DM:\s*([A-Z0-9]+)\]\s*(.*)/is);
+    if (aiDmMatch) {
+      const targetUserId = aiDmMatch[1];
+      const messageToForward = aiDmMatch[2];
+      await dmUser(client, targetUserId, `💬 *Message from <@${event.user}>:*\n\n${messageToForward}`);
+      response = `✅ I've forwarded the message to <@${targetUserId}>!`;
+    }
+    
     await say(formatForSlack(response));
   }
 }
@@ -252,6 +292,25 @@ app.event('app_mention', async ({ event, say, client }) => {
 });
 
 // Interactive Button Handlers
+app.action('view_company_runbook', async ({ ack, say, body }) => {
+  await ack();
+  await say({
+    text: "📖 Fetching GlobalCorp Runbook SOP...",
+    thread_ts: body.message.ts
+  });
+  
+  const repo = process.env.GITHUB_REPO || 'JashKotadiya/slack-incident-agent';
+  const url = `https://github.com/${repo}/blob/main/runbooks/SOP.md`;
+  
+  const summary = `*GlobalCorp Incident Protocol - Level 1*\n\n1. *Acknowledge* the alert in this thread.\n2. *Review* Datadog Logs.\n3. *Trigger Rollback* if the incident was caused by a recent deployment.\n4. *Create Jira Ticket* for post-mortem tracking.\n\n🔗 <${url}|Click here to read the full Standard Operating Procedure (SOP)>`;
+
+  await new Promise(r => setTimeout(r, 1000));
+  await say({
+    text: summary,
+    thread_ts: body.message.ts
+  });
+});
+
 app.action('suggest_more_fixes', async ({ ack, say, body }) => {
   await ack();
   await say({
@@ -272,11 +331,59 @@ app.action('create_jira_ticket', async ({ ack, say, body }) => {
     text: "🎫 Creating Jira Ticket...",
     thread_ts: body.message.ts
   });
-  await new Promise(r => setTimeout(r, 1000));
+  
+  // Extract a brief description from the Slack message we are replying to
+  const originalMessageText = body.message.text || "Incident detected.";
+  const summaryText = "Incident Report: " + originalMessageText.substring(0, 50).replace(/[^a-zA-Z0-9 ]/g, '') + "...";
+  
+  const result = await createJiraTicket(summaryText, originalMessageText);
+  
+  if (result.success) {
+    await say({
+      text: `✅ *${result.message}*\nView the ticket on Jira: <${result.url}|${result.url}>`,
+      thread_ts: body.message.ts
+    });
+  } else {
+    await say({
+      text: `❌ *Failed to create Jira ticket:*\n${result.message}`,
+      thread_ts: body.message.ts
+    });
+  }
+});
+
+app.action('export_google_doc', async ({ ack, say, body, action }) => {
+  await ack();
   await say({
-    text: "✅ *Ticket Created successfully!*\n*ID:* ENG-404\n*Assignee:* On-Call Engineer\n*Priority:* Highest",
+    text: "📝 Authenticating with Google Cloud Platform and creating your Incident Report...",
     thread_ts: body.message.ts
   });
+  
+  try {
+    // Extract summary from the message blocks instead of button value to avoid 2000 char limits
+    let summaryText = "";
+    if (body.message && body.message.blocks) {
+      for (const block of body.message.blocks) {
+        if (block.type === "section" && block.text && block.text.type === "mrkdwn") {
+          summaryText += block.text.text + "\n";
+        }
+      }
+    }
+    
+    const userEmail = process.env.JIRA_EMAIL; // Re-using this email for Google Docs sharing
+    
+    const docUrl = await exportToGoogleDoc("Automated Alert", summaryText, userEmail);
+    
+    await say({
+      text: `✅ **Success!** Incident Summary exported to Google Docs. It has been shared with \`${userEmail}\`.\n\n🔗 ${docUrl}`,
+      thread_ts: body.message.ts
+    });
+  } catch (error) {
+    console.error("Google Docs Export Failed:", error);
+    await say({
+      text: `❌ **Failed to export to Google Docs.**\n\`\`\`${error.message}\`\`\`\n_Did you provide the Service Account JSON key in GOOGLE_APPLICATION_CREDENTIALS?_`,
+      thread_ts: body.message.ts
+    });
+  }
 });
 
 app.action('github_trigger_rollback', async ({ ack, say, body }) => {
@@ -343,8 +450,8 @@ async function pollForErrors() {
   await app.start();
   console.log('⚡️ Slack Incident Agent is running!');
 
-  // Autonomous Error Detection: Poll every 60 seconds
-  setInterval(pollForErrors, 60000);
+  // Autonomous Error Detection: Poll every 30 seconds so we don't blow through all 4 API keys!
+  setInterval(pollForErrors, 30000);
 
   // Instant Uptime Detection: WebSocket Monitor
   startSyntheticMonitoring(async (service, errorMessage) => {

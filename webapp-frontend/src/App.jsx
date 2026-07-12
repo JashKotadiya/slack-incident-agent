@@ -29,8 +29,11 @@ function App() {
   const handleFrontendCrash = () => {
     setStatus('error')
     setMessage('❌ Frontend React Runtime Error! Log sent to Datadog RUM.')
-    // Throw a real error for Datadog RUM to catch
-    throw new Error('Catastrophic Frontend UI Failure')
+    // Throw a real error for Datadog RUM to catch, but wrap it in setTimeout 
+    // so React has time to render the error message to the DOM first!
+    setTimeout(() => {
+      throw new Error('Catastrophic Frontend UI Failure')
+    }, 100)
   }
 
   return (

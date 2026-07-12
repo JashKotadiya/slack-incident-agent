@@ -2,9 +2,35 @@ import Groq from 'groq-sdk';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY
-});
+const groqClients = [];
+for (let i = 1; i <= 10; i++) {
+  const key = process.env[`GROQ_API_KEY_${i}`];
+  if (key) {
+    groqClients.push(new Groq({ apiKey: key }));
+  }
+}
+if (!groqClients.length && process.env.GROQ_API_KEY) {
+  groqClients.push(new Groq({ apiKey: process.env.GROQ_API_KEY }));
+}
+
+async function callGroqWithFallback(apiCall) {
+  let lastError;
+  for (let i = 0; i < groqClients.length; i++) {
+    try {
+      if (i > 0) {
+        console.warn(`[Groq] Rate limit hit on Key ${i}. Failing over to Key ${i + 1}...`);
+      }
+      return await apiCall(groqClients[i]);
+    } catch (error) {
+      lastError = error;
+      if (error.status === 429 || (error.message && error.message.includes('Rate limit'))) {
+        continue; // Try the next key
+      }
+      throw error; // If it's not a rate limit error, throw immediately
+    }
+  }
+  throw lastError; // If all keys hit rate limits
+}
 
 export async function summarizeAlert(diagnosticData, historyContext = []) {
   try {
@@ -29,7 +55,7 @@ Please provide:
 Format the response nicely so it can be sent as a Slack message. Use Slack markdown (e.g. *bold* instead of **bold**).
 `;
 
-    const chatCompletion = await groq.chat.completions.create({
+    const chatCompletion = await callGroqWithFallback(client => client.chat.completions.create({
       messages: [
         {
           role: "system",
@@ -60,7 +86,7 @@ Format the response nicely so it can be sent as a Slack message. Use Slack markd
       ],
       model: "openai/gpt-oss-20b",
       max_tokens: 2048,
-    });
+    }));
 
     let responseContent = chatCompletion.choices[0]?.message?.content || "{}";
     
@@ -104,7 +130,7 @@ export async function chatWithAI(userMessage, conversationId = 'default', slackT
       chatMemory.set(conversationId, [
         {
           role: "system",
-          content: "You are a helpful and highly skilled AI DevOps assistant in a Slack workspace. Reply conversationally to the user. \n\nIMPORTANT FORMATTING RULES:\n- Use Slack mrkdwn formatting ONLY.\n- Use single asterisks for *bold* (NOT **bold**).\n- DO NOT use markdown tables.\n- DO NOT use any HTML tags like <br>.\n- Use bulleted lists instead of tables for structured data."
+          content: "You are a helpful and highly skilled AI DevOps assistant in a Slack workspace. Reply conversationally to the user. \n\nIMPORTANT FORMATTING RULES:\n- Use Slack mrkdwn formatting ONLY.\n- Use single asterisks for *bold* (NOT **bold**).\n- DO NOT use markdown tables.\n- DO NOT use any HTML tags like <br>.\n- Use bulleted lists instead of tables for structured data.\n\nIMPORTANT DM RULE:\nIf the user asks you to send a message, forward something, or notify a specific user (e.g. `<@U12345>`), you MUST execute this by starting your response EXACTLY with `[DM: U12345] `. The rest of your response will be the message that is sent directly to that user. You can formulate the message yourself based on the conversation context."
         }
       ]);
     }
@@ -123,11 +149,11 @@ export async function chatWithAI(userMessage, conversationId = 'default', slackT
       messages.splice(1, 1);
     }
 
-    const chatCompletion = await groq.chat.completions.create({
+    const chatCompletion = await callGroqWithFallback(client => client.chat.completions.create({
       messages: messages,
       model: "openai/gpt-oss-20b",
       max_tokens: 2048,
-    });
+    }));
 
     const response = chatCompletion.choices[0]?.message?.content || "Sorry, I couldn't process that.";
     messages.push({ role: "assistant", content: response });
@@ -141,7 +167,7 @@ export async function chatWithAI(userMessage, conversationId = 'default', slackT
 
 export async function summarizeSlackMessages(transcript) {
   try {
-    const chatCompletion = await groq.chat.completions.create({
+    const chatCompletion = await callGroqWithFallback(client => client.chat.completions.create({
       messages: [
         {
           role: "system",
@@ -154,7 +180,7 @@ export async function summarizeSlackMessages(transcript) {
       ],
       model: "openai/gpt-oss-20b",
       max_tokens: 2048,
-    });
+    }));
     return chatCompletion.choices[0]?.message?.content || "Could not generate summary.";
   } catch (error) {
     console.error("Error calling Groq API for summary:", error);

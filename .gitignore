@@ -1,3 +1,5 @@
 node_modules/
 .env
 incident-history.json
+
+google-credentials.json
