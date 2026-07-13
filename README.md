@@ -72,5 +72,3 @@ npm run dev
 ## 📚 Standard Operating Procedure (SOP)
 See the [`runbooks/SOP.md`](runbooks/SOP.md) file for the official GlobalCorp incident protocol regarding triage, auto-rollbacks, and post-mortems.
 
----
-*Built for the Hackathon. May the rate limits be ever in your favor!*
