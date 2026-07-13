@@ -4,8 +4,7 @@ A highly resilient, AI-powered Slack bot designed for Hackathons and rapid incid
 
 ##  Core Features
 
-*   ** AI-Powered Incident Summaries (Groq)**: The moment a new error is detected, the agent analyzes the raw stack traces using Groq's blazing fast LLMs. It generates a plain-English summary, root cause analysis, and actionable remediation steps right in the Slack thread.
-*   ** Multi-Key API Failover System**: Built to survive aggressive rate limits. The agent seamlessly cascades across up to 4 different Groq API keys (`GROQ_API_KEY_1` -> `GROQ_API_KEY_4`) if it encounters `HTTP 429 Too Many Requests` errors, guaranteeing 100% uptime for the AI brain during heavy error floods.
+*   ** AI-Powered Incident Summaries **: The moment a new error is detected, the agent analyzes the raw stack traces using 's blazing fast LLMs. It generates a plain-English summary, root cause analysis, and actionable remediation steps right in the Slack thread.
 *   ** Autonomous Datadog Integration**: Integrates directly with the Datadog API (including Datadog RUM for frontend). It polls every 30 seconds to catch both backend server crashes and frontend React runtime errors.
 *   ** Instant Synthetic Monitoring**: Bypasses the 30-second polling delay using persistent WebSocket connections to both the Express backend and Vite frontend. If a server goes offline completely, the agent is notified instantly.
 *   ** Interactive Slack Runbooks**: Rich Slack Block Kit UI with one-click action buttons attached to every incident:
@@ -30,7 +29,7 @@ graph TD
     F -->|WebSocket Synthetics| C
     
     E -->|Raw Logs| F
-    F <-->|Stack Trace Analysis| G{Groq AI Failover System}
+    F <-->|Stack Trace Analysis| G{ AI Failover System}
     
     F <-->|Query internal data via MCP| L[(Snowflake Data Warehouse)]
     
