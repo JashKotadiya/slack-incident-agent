@@ -17,10 +17,12 @@ logging.basicConfig(level=logging.DEBUG)
 
 app = App(
     token=os.environ.get("SLACK_BOT_TOKEN"),
-    client=WebClient(
-        base_url=os.environ.get("SLACK_API_URL", "https://slack.com/api"),
-        token=os.environ.get("SLACK_BOT_TOKEN"),
-    ),
+    signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
+    #client=WebClient(
+        #base_url=os.environ.get("SLACK_API_URL", "https://slack.com/api"),
+        #token=os.environ.get("SLACK_BOT_TOKEN"),
+        #signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
+    #),
 )
 
 register_listeners(app)

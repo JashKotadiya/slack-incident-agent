@@ -1,8 +1,11 @@
 """Incident channel creation and debrief posting.
 
-When the Snowflake poller detects new failures, this module spins up a
-dedicated Slack channel, invites the security/on-call team, and posts an
-initial debrief message so responders have full context immediately.
+When the Snowflake poller detects new failures, this module posts an initial
+debrief so responders have full context immediately. By default it spins up a
+dedicated Slack channel and invites the security/on-call team; if
+``SLACK_INCIDENT_CHANNEL`` is set it posts into that existing channel instead
+(simpler on org-wide Enterprise Grid installs, where creating channels requires
+a member-workspace ``team_id`` the app is approved on).
 """
 
 import logging
@@ -21,41 +24,34 @@ def _security_team_user_ids() -> list[str]:
     return [uid.strip() for uid in raw.split(",") if uid.strip()]
 
 
-def create_incident_channel(
-    client: WebClient,
-    incident_slug: str,
-    summary: str,
-    raw_details: str | None = None,
-) -> str | None:
-    """Create a new incident channel, invite the security team, and post a debrief.
+def _incident_team_id(client: WebClient) -> str | None:
+    """Resolve the workspace (team) ID to create the incident channel in.
 
-    Args:
-        client: Bot WebClient used to create the channel and post messages.
-        incident_slug: Short, filesystem/channel-name-safe identifier (e.g. "wh-load-spike").
-        summary: Plain-English summary of the incident (from the agent/Slack AI).
-        raw_details: Optional raw query/task results to include for reference.
-
-    Returns:
-        The new channel ID, or None if channel creation failed.
+    Org-level (Enterprise Grid) installs must tell ``conversations.create`` which
+    workspace to use, otherwise it fails with ``missing_argument: team_id``.
+    Prefer an explicit SLACK_TEAM_ID (a ``T…``-prefixed workspace id); fall back
+    to ``auth.test`` for single-workspace installs.
     """
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
-    channel_name = f"incident-{incident_slug}-{timestamp}"[:80].lower()
-
+    team_id = os.environ.get("SLACK_TEAM_ID")
+    if team_id:
+        return team_id
     try:
-        response = client.conversations_create(name=channel_name, is_private=False)
-        channel_id = response["channel"]["id"]
+        return client.auth_test().get("team_id")
     except SlackApiError as e:
-        logger.exception("Failed to create incident channel: %s", e.response.get("error"))
+        logger.warning(
+            "Could not resolve team_id via auth.test: %s", e.response.get("error")
+        )
         return None
 
-    security_team = _security_team_user_ids()
-    if security_team:
-        try:
-            client.conversations_invite(channel=channel_id, users=",".join(security_team))
-        except SlackApiError as e:
-            # Non-fatal: continue posting the debrief even if invites partially failed.
-            logger.warning("Failed to invite security team: %s", e.response.get("error"))
 
+def _post_debrief(
+    client: WebClient,
+    channel_id: str,
+    incident_slug: str,
+    summary: str,
+    raw_details: str | None,
+) -> None:
+    """Post the incident header + summary (+ raw details) to a channel."""
     blocks = [
         {
             "type": "header",
@@ -81,4 +77,59 @@ def create_incident_channel(
     except SlackApiError as e:
         logger.exception("Failed to post incident debrief: %s", e.response.get("error"))
 
+
+def create_incident_channel(
+    client: WebClient,
+    incident_slug: str,
+    summary: str,
+    raw_details: str | None = None,
+) -> str | None:
+    """Post an incident debrief, creating a dedicated channel unless one is configured.
+
+    If ``SLACK_INCIDENT_CHANNEL`` is set, the debrief is posted to that existing
+    channel (the bot must be a member) and no channel is created. Otherwise a new
+    ``incident-<slug>-<timestamp>`` channel is created and the security team invited.
+
+    Args:
+        client: Bot WebClient used to create the channel and post messages.
+        incident_slug: Short, channel-name-safe identifier (e.g. "wh-load-spike").
+        summary: Plain-English summary of the incident (from the agent).
+        raw_details: Optional raw query/task results to include for reference.
+
+    Returns:
+        The channel ID used (created or existing), or None if it failed.
+    """
+    # Post into a pre-existing channel when configured — avoids conversations.create
+    # entirely, which is the simplest path on org-wide installs.
+    existing_channel = os.environ.get("SLACK_INCIDENT_CHANNEL")
+    if existing_channel:
+        logger.info("Posting incident to existing channel %s", existing_channel)
+        _post_debrief(client, existing_channel, incident_slug, summary, raw_details)
+        return existing_channel
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
+    channel_name = f"incident-{incident_slug}-{timestamp}"[:80].lower()
+
+    create_kwargs = {"name": channel_name, "is_private": False}
+    team_id = _incident_team_id(client)
+    if team_id:
+        # Required for org-level installs; harmless for single-workspace ones.
+        create_kwargs["team_id"] = team_id
+
+    try:
+        response = client.conversations_create(**create_kwargs)
+        channel_id = response["channel"]["id"]
+    except SlackApiError as e:
+        logger.exception("Failed to create incident channel: %s", e.response.get("error"))
+        return None
+
+    security_team = _security_team_user_ids()
+    if security_team:
+        try:
+            client.conversations_invite(channel=channel_id, users=",".join(security_team))
+        except SlackApiError as e:
+            # Non-fatal: continue posting the debrief even if invites partially failed.
+            logger.warning("Failed to invite security team: %s", e.response.get("error"))
+
+    _post_debrief(client, channel_id, incident_slug, summary, raw_details)
     return channel_id

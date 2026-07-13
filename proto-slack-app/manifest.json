@@ -45,6 +45,7 @@
       "bot": [
         "app_mentions:read",
         "channels:history",
+        "channels:manage",
         "chat:write",
         "groups:history",
         "im:history",

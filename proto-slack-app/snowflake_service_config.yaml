@@ -1,0 +1,24 @@
+# Service configuration for the Snowflake-Labs MCP server (snowflake-labs-mcp),
+# passed via --service-config-file. Without this file the server refuses to start
+# ("service_config_file cannot be None").
+#
+# The incident poller only needs the generic SQL execution tool
+# (run_snowflake_query) to read query history — the Cortex search/analyst
+# services are unused, so their lists are empty.
+
+search_services: []
+analyst_services: []
+
+# Enable the SQL execution tool; leave the object/semantic managers off.
+other_services:
+  object_manager: false
+  query_manager: true
+  semantic_manager: false
+
+# Least-privilege allow-list. The poller only issues SELECTs (against
+# INFORMATION_SCHEMA.QUERY_HISTORY / ACCOUNT_USAGE.QUERY_HISTORY), so only Select
+# is permitted. The server default-denies every statement type not listed here;
+# add more (e.g. "- Show: true") or use "- All: true" as an escape hatch if you
+# broaden what the poller runs.
+sql_statement_permissions:
+  - Select: true
