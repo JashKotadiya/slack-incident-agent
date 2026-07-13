@@ -10,6 +10,7 @@ import { createIncidentIssue, triggerRollbackWorkflow } from './github-actions.j
 import { startSyntheticMonitoring } from './synthetic-monitor.js';
 import { createJiraTicket } from './jira-api.js';
 import { exportToGoogleDoc } from './google-docs-api.js';
+import { checkSnowflakeErrors } from './snowflake-api.js';
 
 dotenv.config();
 
@@ -243,7 +244,7 @@ async function processMessage(event, say, client, conversationId) {
   // Prepend the user's name so the AI doesn't get confused by leftover mentions
   const contextualText = `[User ${userName} says]: ${text}`;
 
-  const alertRegex = /\b(run system check|simulate outage|check for errors|check for erro)(?:\s+(?:on\s+)?(frontend|backend|webapp-frontend|webapp))?\b/i;
+  const alertRegex = /\b(run system check|simulate outage|check for errors|check for erro)(?:\s+(?:(?:on|in)\s+)?(frontend|backend|webapp-frontend|webapp|snowflake))?\b/i;
   const dmRegex = /(?:dm|send a dm to|message)\s+<@([A-Z0-9]+)>\s*(.*)/i;
   
   const alertMatch = text.match(alertRegex);
@@ -255,8 +256,21 @@ async function processMessage(event, say, client, conversationId) {
       const target = alertMatch[2].toLowerCase();
       if (target === 'frontend' || target === 'webapp-frontend') service = 'webapp-frontend';
       else if (target === 'backend' || target === 'webapp') service = 'webapp';
+      else if (target === 'snowflake') service = 'snowflake';
     }
-    await handleAlert(`System Check (${service})`, say, client, service);
+    
+    if (service === 'snowflake') {
+      const mockSay = async (msg) => { await say(msg); };
+      const diagnosticData = await checkSnowflakeErrors();
+      
+      if (diagnosticData.status === 'OK') {
+        await say(`✅ System Check (Snowflake): ${diagnosticData.logs}`);
+      } else {
+        await handleAlert(`System Check (Snowflake)`, mockSay, client, 'snowflake', diagnosticData);
+      }
+    } else {
+      await handleAlert(`System Check (${service})`, say, client, service);
+    }
   } else if (dmMatch) {
     const targetUserId = dmMatch[1];
     const messageToForward = dmMatch[2] || "You have a new message from the incident agent.";
@@ -416,15 +430,16 @@ app.action('github_create_issue', async ({ ack, say, body }) => {
 
 let lastSeenLogs = {
   'webapp': '',
-  'webapp-frontend': ''
+  'webapp-frontend': '',
+  'snowflake': ''
 };
 
 async function pollForErrors() {
-  const services = ['webapp', 'webapp-frontend'];
+  const services = ['webapp', 'webapp-frontend', 'snowflake'];
   
   for (const service of services) {
     try {
-      const diagnosticData = await getDiagnosticData(service);
+      const diagnosticData = service === 'snowflake' ? await checkSnowflakeErrors() : await getDiagnosticData(service);
       
       if (diagnosticData.status === 'CRITICAL' || diagnosticData.status === 'ERROR') {
         if (diagnosticData.logs !== lastSeenLogs[service] && !diagnosticData.logs.includes('No recent error logs')) {
@@ -436,7 +451,7 @@ async function pollForErrors() {
             await app.client.chat.postMessage({ channel: 'errors', text: text }); 
           };
           
-          await handleAlert(`Autonomous Detection: ${service} Error`, mockSay, app.client, service);
+          await handleAlert(`Autonomous Detection: ${service} Error`, mockSay, app.client, service, diagnosticData);
         }
       }
     } catch (e) {

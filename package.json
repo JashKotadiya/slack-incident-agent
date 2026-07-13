@@ -15,6 +15,7 @@
     "dotenv": "^16.4.5",
     "googleapis": "^173.0.0",
     "groq-sdk": "^0.5.0",
+    "snowflake-sdk": "^3.1.0",
     "ws": "^8.21.0"
   },
   "type": "module"
